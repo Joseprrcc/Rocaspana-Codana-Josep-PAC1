@@ -1,0 +1,331 @@
+---
+title: "PAC 1 - Anàlisi de Dades Òmiques"
+author: "Josep Rocaspana Codana"
+date: "2024-10-25"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+\tableofcontents
+
+
+
+
+
+## Resum Executiu
+
+En aquesta PEC, es realitza una anàlisi exploratòria d'un dataset metabolòmic. En concret, s'ha fet servir el dataset human_cachexia el qual conté dades de 77 pacients oncològics als quals se'ls classifica en dos grups: pacients control o caquèxics. Per a executar la tasca, s'utilitza el format SummarizedExperiment per a poder organitzar i estructurar les mostres, metabòlits i metadades associades amb la finalitat de poder tenir un maneig optimitzat de les dades.
+
+El procés es va iniciar amb la generació del contenidor SummarizedExperiment, el qual inclou les dades de les concentracions dels metabòlits, informació sobre les mostres (Com la identificació del pacient o la seva condició muscular) i, finalment, una descripció de la metadata d'aquest SE.
+
+## Objectius 
+
+L'objectiu principal d'aquesta PAC és, doncs, explorar les diferències metabòliques entre pacients oncològics control i pacients oncològics amb la condició de caquèxia aprenent a generar contenidors com SummarizedExperiment i treballant amb una anàlisi estadística descriptiva i exploratòria.
+
+## Material i mètodes
+
+Les dades amb les quals s'ha treballat corresponen al dataset human_cachexia, el qual pot trobar-se a la plataforma MetaboAnalyst. Aquest dataset conté diferents determinacions de metabòlits en mostres d'orina de 77 pacients oncològics els quals estan dividits entre pacients controls i pacients caquèxics. Aquest fet permet la possibilitat d'estudiar les diferències entre aquests grups.
+
+En relació a les eines utilitzades, per a l'anàlisi i processament de les dades s'han fet servir diverses eines i paquets de R. Alguns dels recursos utilitzat al llarg de l'elaboració de la PAC són:
+
+1) SummarizedExperiment: El qual ens permet crear i manipular el contenidor de dades, la qual cosa facilita la manipulació de les dades i metadades.
+
+2) ggplot2: És un recurs bioinformàtic que permet la creació de gràfics i d'altres visualitzacions entre les quals inclou: boxplots, histogrames, gràfics de components principals (PCA), etc.
+
+3) dplyr i tidyr: Permeten una manipulació i transformació de les dades de forma senzilla.
+
+4) BiocManager i S4Vectors: Aquestes eines permeten la facilitació de la integració i compatibilitat de les estructures de dades per a R.
+
+En quant al procediment de l'anàlisi, consta dels següents passos:
+
+1) Generació del SummarizedExperiment (Organització de les dades): Les dades han sigut estructurades i contingudes a un contenidor SummarizedExperiment (se). Aquest contenidor presenta la matriu numèrica a la qual hi són les determinacions de les concentracions de metabòlits, les metadades relacionades amb les covariants de cada pacient (és a dir, Muscle.loss o estat muscular i Patient.ID [identificador]) i, també, els noms dels metabòlits.
+
+2) Anàlisi exploratòria. Aquesta anàlisi ha constat de les següents parts:
+
+* Determinació les dimensions de l'objecte se (número de metabòlits i mostres)
+* Determinació dels noms dels elements de l'objecte se.
+* Resum estadístic de les determinacions metabòliques mitjançant el càlcul de diferents estadístics (mínim, Q1, mediana, mitjana aritmètica, Q3, màxim i desviació estàndar)
+* Visualització de les distribucions dels metabòlits en funció de l'estat muscular del pacient mitjançant boxplots.
+* Anàlisi de Components Principals amb la finalitat de poder avaluar el comportament de cada grup i determinar la separació entre aquest en funció dels seus perfils metabòlics.
+* Generació de matriu de correlació. Es calcula la matriu de correlació entre metabòlits i es visualitza mitjançant un heatmap amb la finalitat d'explorar relacions o associacions funcionals entre ells.
+* Clustering jeràrquic. Es varen generar dos dendogrames de clústering jeràrquic, un per mostra i un per metabòlit amb la finalitat de poder detectar agrupacions a les nostres dades.
+
+
+## Resultats
+
+Primerament, carrego  les llibreries i paquets necessaris per a la realització de la tasca.A més a més, carrego les nostres dades i les visualitzo inicialment per a veure que ho he fet correctament.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+dataset_caquexia <- read.csv("C:/Users/Josep/Downloads/human_cachexia.csv")
+head(dataset_caquexia)
+
+```
+Una vegada carregat, veig que s'ha carregat correctament i procedeixo a la operació amb el fitxer
+
+Després d'haver visualitzat el dataset, veig que consisteix en:
+
+*77 pacients amb els seus ID (primera columna)
+*El seu estat muscular (caquèxic vs normal)
+*Les diferents determinacions de metabòlits (3a columna en endavant)
+
+Així doncs, carrego els paquets i llibreries necessaris i començo a operar. Per a poder obtenir l'objecte SummarizedExperiment, hem de generar prèviament les seves parts. Per a facilitar la comprensió del que s'ha dut a terme i que tot el codi sigui present a un chunk, aniré segmentant els pasos 1 a 1 i marcaré al codi quin pas és quin.
+
+* Pas 1: Primer, faig l'extracció de la matriu numèrica del meu dataset amb la finalitat de generar el assay. Amb aquest codi selecciono totes les columnes del dataset original des de la 3a fins la última columna (mitjançant ncol). Això ho faig perquè a assay_data només vull que contingui la matriu numèrica amb les determinacions de metabòlits. Posteriorment transposo la matriu amb la finalitat que cada columna correspongui a una mostra (un pacient) i cada fila representi un metabòlit (la qual cosa s'ajusta bé al format de SummarizedExperiment). Finalment, faig servir as.matrix per convertir les dades seleccionades en una matriu numèrica (ja que SummarizedExperiment espera aquest format.)
+
+* Pas 2: Posteriorment, faig una assignació dels noms de les columnes i de les files.
+Primerament, fent servir colnames, el que faig es assignar els identificadors dels pacients com els noms de les columnes ja que cada columna representa una mostra única.
+
+* Pas 3:També assigno els noms dels metabòlits com a noms de les files per a assay_data. Aquests es troben de la columna 3 cap endavant
+
+* Pas 4:Quan ja hem generat el assay_data definim pacients_metadata, creo un data.frame amb aquest nom amb la finalitat d'emmagatzemar les metadades de les mostres, que en el cas d'aquest dataset, inclouen les covariants de ID (Patient.ID) i la seva condició muscular (Muscle.loss). Així doncs, aquest dataframe será el colData del meu SummarizedExperiment i guardarà la informació de cada mostra
+
+Selecciono les columnes Patient.ID i Muscle.loss perquè el ID serveix com a indicador únic de cada pacient i la variable Muscle.loss es una variable que indica quina condició té cada pacient, i serà vital per al anàlisi (encara que sigui merament exploratori), ja que s'utilitzarà per a comparar els grups.
+
+Posteriorment, faig una assignació del nom de files, assignant els ID com noms de fila a sample_metadata amb la finalitat que cada fila de ColData es correspongui adequadament amb les columnes del assay_data. Així doncs, aconseguim l'alineament de les metadates amb els metabòlits. En última instància, converteixo en dataframe perquè sigui compatible amb SummarizedExperiment.
+
+
+* Pas 5: Posteriorment, escullo els noms de les columnes de la tercera fins la ultima del dataset original que correspon als metabolits i creo una metadata que només tingui els noms dels metabòlits. Així doncs em queda una llista dels noms dels metabòlits. No assigno rownames per a evitar les duplicacions, ja que els noms dels metabòlits ja es troben a la columna Metabolite. Aquest dataframe doncs, serveix com a rowData en sí mateix en el SummarizedExperiment. Finalment, converteixo el pacients_metadata a un dataframe (ja que SummaryExperiment ho requereix)
+
+
+
+* Pas 6: Així doncs, genero l'objecte se (SummarizedExperiment) que conté:
+
+1) la matriu numèrica de dades on s'emmagatzemen els valors de les determinacions de metabòlits (assays)
+2) Les metadades de les mostres (colData), que descriu les característiques de cada pacient.
+3) Metadades de les característiques (rowData) que descriu cada metabòlit del dataset
+4) Informació addicional que he pogut extreure anant a "https://www.metaboanalyst.ca/MetaboAnalyst/upload/PowerUploadView.xhtml" per a la descripció del dataset
+
+i, finalment, imprimeixo l'objecte se per a la seva visualització.
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager")
+}
+
+if (!requireNamespace("SummarizedExperiment", quietly = TRUE)) {
+  BiocManager::install("SummarizedExperiment")
+}
+
+if (!requireNamespace("S4Vectors", quietly = TRUE)) {
+  BiocManager::install("S4Vectors")
+}
+
+library(SummarizedExperiment)
+library(S4Vectors)
+
+assay_data <- as.matrix(t(dataset_caquexia[, 3:ncol(dataset_caquexia)])) #pas 1
+
+colnames(assay_data) <- dataset_caquexia$Patient.ID #pas 2
+
+rownames(assay_data) <- colnames(dataset_caquexia)[3:ncol(dataset_caquexia)] #pas3
+
+
+pacients_metadata <- data.frame(
+  Patient.ID = dataset_caquexia$Patient.ID,
+  Muscle.loss = dataset_caquexia$Muscle.loss
+)
+
+rownames(pacients_metadata) <- pacients_metadata$Patient.ID
+pacients_metadata <- DataFrame(pacients_metadata) #PAS 4
+
+
+
+metabolite_metadata <- DataFrame(Metabolite = colnames(dataset_caquexia)[3:ncol(dataset_caquexia)]) #pas 5
+
+
+
+se <- SummarizedExperiment(
+  assays = list(counts = assay_data),
+  colData = pacients_metadata,
+  rowData = metabolite_metadata,
+  metadata = list(
+    descripcio_dataset = "Dades metabològiques de 77 pacients caquèxics i controls en un estudi pilot metabolòmic en orina, realitzat en pacients amb càncer",
+    informacio_columna = "Cada columna representa una mostra (és a dir, un pacient) i la seva condició de pèrdua muscular",
+    informacio_fila = "Cada fila representa un metabòlit determinat a les mostres"
+    )
+)
+
+print(se)      #pas6
+```
+## Anàlisi exploratòria
+
+Després d'haver generat el SummarizedExperiment, podem procedir amb l'anàlisi exploratòria de les dades carregant les llibreries necessàries 
+
+Primerament, determinem:
+
+1) Les dimensions de l'objecte se
+2) Els noms dels elements de l'objecte se.
+
+Aquests dos paràmetres ens donen informació sobre paràmetres bàsics com el número de files, columnes i els noms dels elements del nostre objecte.
+
+```{r}
+library(SummarizedExperiment)
+library(ggplot2)
+library(dplyr)
+
+metabolite_data <- assay(se)
+sample_metadata <- colData(se)
+
+#Determinem les dimensions de l'objecte se (número de metabòlits i mostres)
+dim(se)
+
+#determinem els noms dels elements del SummarizedExperiment
+names(se)
+
+#Generem un resum de les dades d'expressió (assay) amb les estadístiques de cada metabòlits en general (sense importar l'estat muscular)
+
+metabolite_summary <- data.frame(
+  Minim = apply(assay(se), 1, min),
+  Q1 = apply(assay(se), 1, quantile, probs = 0.25),
+  mediana = apply(assay(se), 1, median),
+  mitjana = apply(assay(se), 1, mean),
+  Q3 = apply(assay(se), 1, quantile, probs = 0.75),
+  Maxim = apply(assay(se), 1, max),
+  Desviacio_estandar = apply(assay(se), 1, sd)
+)
+
+cat("Resum estadístic dels valors generals dels metabòlits:")
+print(head(metabolite_summary))
+
+```
+
+Ara podem fer una inspecció visual dels metabòlits a nivell de histograma. Degut a la natura de les dades metabolòmiques, és molt habitual que hi hagi valors molt baixos i d'altres que siguin molt, molt més elevats. Per aquesta raó, abans de graficar amb histogrames les dades relacionades amb els metabòlits, decideixo aplicar una transformació logaritmica per a millorar la seva visualització. A més a més, li sumo una unitat per a evitar el log(0)
+
+```{r}
+
+dades_metabolits_logaritmiques <- log2(assay(se) + 1)
+grafica_configuracio <- par(mfrow = c(3, 3))
+
+#Grafiquem l'histograma de cada mostra fent servir les dades transformades logarítmicament.
+
+for (i in 1:ncol(dades_metabolits_logaritmiques)) {
+    hist(dades_metabolits_logaritmiques[, i],
+         main = colnames(dades_metabolits_logaritmiques)[i],
+         xlab = "Concentració de metabòlits (log2)",
+         ylab = "Frecuencia",
+         col = "black",
+         breaks = 20)
+}
+
+#Una altra possibilitat és veure com canvien les concentracions en funció del grup (control o caquèxic)
+#Per a fer això, he decidit generar una comparació múltiple.
+
+
+
+metabolite_df <- as.data.frame(t(metabolite_data))
+metabolite_df$Muscle.loss <- sample_metadata$Muscle.loss
+
+
+library(tidyr)
+metabolite_llarg <- metabolite_df %>%
+  pivot_longer(cols = -Muscle.loss, names_to = "Metabolite", values_to = "Concentration")
+
+ggplot(metabolite_llarg, aes(x = Muscle.loss, y = Concentration, fill = Muscle.loss)) +
+  geom_boxplot() +
+  facet_wrap(~ Metabolite, scales = "free_y") +
+  scale_fill_manual(values = c("control" = "green", "cachexic" = "black")) +
+  labs(title = "Distribució per grup dels diferents metabòlits") + 
+  theme_minimal()
+
+```
+Per una banda, els histogrames amb les concentracions de metabòlits transformades logarítmicament permeten veure la distribució d'aquestes molècules per a cada pacient, permetent la visualització de patrons i variabilitat intraindividual entre aquests metabòlits. Aquesta representació NO diferencia entre grups i controls.
+
+D'altra banda, al boxplot el que es pretén es representar les concentracions (NO logaritmiques) de diferents metabòlits en pacients controls i caquèxics. Gràcies a això, es pot veure de forma visual i ràpida les variacions de la concentració de metabòlits entre grups, donant una idea general d'aquesta variació. Com es pot observar, hi ha una una gran variabilitat entre metabòlits i una gran presència de valors extrems. Com podem veure, hi ha metabòlits com la creatinina, la leucina o la alanina que són marcadament més presents al grup de caquèxics en comparació al grup control. De fet, a grans trets, la concentració de tots aquests metabòlits en orina sembla ser superior en els pacients caquèxics.
+
+Després d'haver visualitzat les dades, podem fer un anàlisi de components principals, com hem vist a la teoria, per a reduir la dimensionalitat de les dades i resumir la variabilitat en pocs components (PC1, PC2) els quals explican la major part de la variabilitat de les nostres dades.
+
+```{r}
+analisi_pca <- prcomp(t(assay(se)), center = TRUE, scale. = TRUE)
+
+dataframe_pca <- data.frame(analisi_pca$x, Group = colData(se)$Muscle.loss)
+
+#Així doncs, grafiquem els dos components principals PC1, PC2.
+ggplot(dataframe_pca, aes(x = PC1, y = PC2, color = Group)) +
+  geom_point(size = 3) +
+  labs(title = "Anàlisi dels components principals (PCA)", x = "PC1", y = "PC2") +
+  scale_color_manual(values = c("control" = "green", "cachexic" = "black")) +
+  theme_minimal()
+
+```
+
+En el gràfic podem veure les mostres control representades en color verd, mentre que les mostres de pacients caquèxics estan en negre. Podem veure que hi ha cert solapament, no obstant això, alguns punts de pacients caquèxics mostren dispersió als extrems, la qual cosa podria indicar una variabilitat en el perfil metabòlic d'aquests pacients (això s'hauria de confirmar després estadísticament amb proves estadístiques). D'aquesta forma, aquest tipus d'anàlisi permet comprendre de forma visual diferencies entre grups.
+
+Per a complementar aquest estudi exploratori de les dades, podem calcular i visualitzar la matriu de correlació entre els metabòlits. Aquesta matriu ens donarà informació sobre quins metabòlits tenen tendència a variar junts, fet que revela relacions entre metabòlits que ens poden interessar a l'hora d'analitzar perfils metabòlics. 
+
+Per exemple: una correlació elevada (positiva o negativa) entre alguns metabòlits podria suggerir que participen en vies metabòliques que estiguin relacionades. De fet, si s'aprofundís en l'anàlisi i es descobrissin metabòlits que mostren una alta correlació entre sí, podrien ser proposats com a candidats com a potencials biomarcadors per formar perfils metabòlics que puguin diferenciar als pacients amb càncer sense pèrdua muscular (control) d'aquells que tenen pèrdua muscular (caquèxia).
+
+```{r}
+matriu_correlacio <- cor(t(assay(se)), use = "pairwise.complete.obs")
+heatmap(matriu_correlacio, main ="Matriu de Correlació entre Metabòlits",
+        col = colorRampPalette(c("blue", "white", "red")) (100),
+        symm = TRUE)
+
+```
+Només per mencionar alguna cosa relacionada amb els resultats obtinguts per la matriu, trobem alguns metabòlits a l'extrem inferior dret (valina, creatinina), que mostren correlacions positives amb metabòlits propers, la qual cosa pot indicar que estan relacionats funcionalment o que puguin participar.
+
+Per a finalitzar l'analisi exploratòria generaré un dendograma de clústering jeràrquic per mostra i un dendoframa de clústering jeràrquic per metabòlit. 
+
+El Dendograma de clústering jeràrquic per mostra agrupa les mostres dels pacients en funció del ser perfil de metabòlits. Mentre estava fent l'estudi exploratori de les dades, vaig adonar-me que era més interessant calcular la distància mitjançant una correlació inversa (1 - correlació) entre les mostres ja que així, visualment, les mostres amb perfils de metabòlits similars o amb alta correlació es trobarien més a prop del dendograma. Això es fa amb la finalitat d'identificar subgrups de pacients amb perfils metabòlics similars.
+
+```{r}
+#Així doncs, si existís una diferència marcada i clara en el dendograma, es podria mirar si els grups corresponen a pacients caquèxics o control.
+
+
+dades_metabolits_logaritmiques <- log2(assay(se) + 1) 
+dades_metaboliques_mod <- scale(dades_metabolits_logaritmiques)
+
+
+#genero el dendograma de clústerin jeràrquic per mostra
+
+mostra_dendograma <- as.dist(1 - cor(dades_metaboliques_mod))
+mostra_jerarquica <- hclust(mostra_dendograma, method = "ward.D2")
+
+#fem la representació visual del dendograma de clústering jerarquic per mostra
+plot(mostra_jerarquica, main = "Dendograma de Clústering jeràrquic per mostra",
+     xlab = "Mostres (Patient.ID)", ylab = "Distància", cex = 0.5)
+```
+Aquest dendograma per mostra el que fa és agrupar les diferents mostres de pacients en funció dels seus perfils metabòlics. Cada branca és una mostra i la seva proximitat indica la similitud en les seves concentracions de metabòlits. Aquest dendograma il·lustra alguns clústers ben definits, com, per exemple, el clúster central conformat per les mostres PIF_115 i PIF_100, suggerint que tenen perfils metabolòmics similars
+
+
+```{r}
+
+#Ara genero el dendograma de clústering Jeràrquic per metabòlit. Aquest dendograma per metabòlit agrupa els metabòlits 
+
+mostra_dendograma_metabolit <- dist(dades_metaboliques_mod, method = "euclidean")
+mostra_2 <- hclust(mostra_dendograma_metabolit, method = "ward.D2")
+
+plot(mostra_2, main = "Dendograma de Clústering Jeràrquic per Metabòlit",
+     xlab = "Metabòlits", ylab = "Distància", cex = 0.6)
+
+```
+Aquest dendograma proporciona informació sobre com els metabòlits s'agrupen en funció dels seus patrons de variació en les mostres analitzades. 
+Pot ser útil per a identificar visualment relacions o associacions entre metabòlits
+És a dir, aquells metabòlits que es troben al mateix clúster tindran perfils de variacions similars. Com a exemple, podem veure un clúster ben diferenciat a la banda esquerra. Aquest clúster està conformat per la creatinina, hipoxantina, histidina, glicolat i l'etanolamina.
+
+
+
+## Discussió i limitacions i conclusions de l'estudi
+
+A l'informe present s'ha realitzat una anàlisi inicial exploratòria del dataset human_cachexia el qual ha permès el seu objectiu principal, explorar les diferències metabolòmiques entre pacients oncològics normals vs pacients oncològics caquèxics mitjançant l'ús del contenidor SummarizedExperiment el qual ha facilitat aquesta tasca on la manipulació i organització de dades és constant. 
+
+No obstant això, la present anàlisi exploratòria presenta algunes limitacions, ja que la mostra de l'estudi té una mida relativament petita (77 pacients) i és difícil poder arribar a conclusions fermes. L'anàlisi exploratòria, tot hi que permet esclarir alguns aspectes metabolòmics inicials, no permet treure conclusions definitives o concluents (tot i que aquest anàlisi no està dirigit cap a això). Per a poder obtenir unes conclusions concloents i fermes seria necessari aplicar diferents proves estadístiques adaptades al nostre context. Una altre aspecte a tenir en consideració és que, per a poder visualitzar les dades de concentracions de metabòlits de forma còmoda a un histograma, va ser necessari dur a terme una transformació logarítmica. No obstant això, aquesta troballa indica la presència de valors extrems que pot suggerir la necessitat de dur a terme tècniques de normalització o preprocessament de dades. D'igual forma, encara que els dendogrames aportin informació interessant, haurien de fer-se estudis amb pacients amb la finalitat de confirmar o no si els clústers generats tenen correspondència amb diferències clíniques estadísticament significatives.
+
+Així doncs, en conclusió, aquesta tasca ha permès l'aplicació de mètodes d'exploració de dades a un dataset metabolòmic i s'han vist potencials diferències als perfils de metabòlits dels pacients oncològics. Així doncs, l'organització de la informació en un contenidor SummarizedExperiment i les visualitzacions com el PCA han facilitat una primera inspecció visual que pot arribar a apuntar cap a algunes tendències que hauran de ser confirmades en estudis posteriors. Finalment, aquesta pràctica estableix els fonaments per a futur anàlisis bioinformàtics més complexos i estadísticament més demandants.
+
+
+## link al repositori (Josep Rocaspana Codana)
+
+https://github.com/Joseprrcc/Rocaspana-Codana-Josep-PAC1
+
+
+Així doncs, arribo al final de l'analisi exploratori de les dades del dataset. he executat la comanda save(se, file = "se_contenidor_josep_rocaspana_codana.rda") a la consola per a obtenir l'objecte contenidor en format binari. 
+
